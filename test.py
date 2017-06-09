@@ -40,7 +40,7 @@ def toString(date):
 dd = dbWrapper('192.168.10.188')
 
 principal=500000.0
-allFiles = glob.glob( "1705_1709/*jd*.csv")
+allFiles = glob.glob( "*/*c1*.csv")
 spec=pd.read_csv("contract.csv")
 # print spec.columns
 if 'out.csv' in allFiles:
@@ -147,7 +147,8 @@ start_date=all_trades.iloc[0]['Date1']
 end_date=all_trades.iloc[-1]['Date1']
 duration=(end_date-start_date).days
 
-last_row=all_trades.tail(1)
+last_row=all_trades.tail(2)
+last_row=last_row.head(1)
 
 if last_row['Date1'].values==last_row['Date2'].values and last_row['Time1'].values==last_row['Time2'].values:
 	name_for_search=get_name(last_row.index[0][0],date=True)
@@ -155,10 +156,10 @@ if last_row['Date1'].values==last_row['Date2'].values and last_row['Time1'].valu
 	expire_date=expiration[name_for_search]
 	ns = 1e-9
 	date_end=datetime.utcfromtimestamp(last_row['Date1'].values[0].astype(datetime)*ns)
-	date_end=datetime(year=date_end.year,month=int(expire_date[:2]),day=int(expire_date[2:4]))
-	end_date=date_end-timedelta(days=1)
+	date_end=datetime(year=date_end.year,month=int(expire_date[:2]),day=1)
+	end_date=date_end-timedelta(days=2)
 	duration=(end_date-start_date).days
-
+print start_date,end_date, (end_date-start_date).days
 
 
 #dictionary of all price data
@@ -184,8 +185,8 @@ for commodity in all_commodity:
 
 	
 	
-value_to_date=np.zeros([len(all_commodity),duration+2])
-pl=np.zeros([len(all_commodity),duration+1])
+value_to_date=np.zeros([len(all_commodity),duration+3])
+pl=np.zeros([len(all_commodity),duration+2])
 
 value_to_date[:,0]=principal
 
@@ -200,60 +201,61 @@ for index, row in all_trades.iterrows():
 	date2=toString(row['Date2'])
 	price0=row['Price1']
 	price_end=row['Price2']
-	
+	hold=0
 	if (date1==date2) and (row['Time1']==row['Time2']):
 		name_for_search=commodity_name[:-4]+commodity_name[-2:]
 		expire_date=expiration[name_for_search]
 		expire_date=datetime(year=row['Date2'].year,month=int(expire_date[:2]),day=int(expire_date[2:4]))-timedelta(days=1)
+		if int(toString(expire_date))>int(toString(end_date)):
+			expire_date=end_date
 		date2=toString(expire_date)
 		price_end=0
-	
+		hold=1
 	data=[(ind, rows) for (ind, rows) in all_prices[commodity_name].iterrows() if ((rows['tradingday']>=date1) and (rows['tradingday']<date2) ) ]
-	prices=[price0]
+	if len(data)>0:
+		# print data[0][1].loc['tradingday']
+		prices=[data[0][1].loc['closeprice'],price0]
 
-	for i in range(len(data)):
-		prices.append(data[i][1].loc['closeprice'])
-	# prices.append(price_end)
-	price_diff=np.diff(prices)
-	
-	trading_days=[]
-	for i in range(len(data)):
-		trading_days.append(data[i][1].loc['tradingday'])
-	trading_days.append(date2)
-	
-	print len(data)
-	print len(trading_days)
-	
-	date_index=[0]
-	for day in trading_days:
-		day_date=datetime(year=int(day[0:4]),month=int(day[4:6]),day=int(day[6:8]))
-		date_index.append((day_date-start_date).days)
-	date_index[1:]=[x+1 for x in date_index[1:]]
-	
-	
-	#set up pl matrix
-	for i in range(len(price_diff)):
-		pl[commodity_index,date_index[i]]+=price_diff[i]*amount_traded*row['mult']
-	for i in range(len(pl[commodity_index,:])):
-		value_to_date[commodity_index,i+1]=value_to_date[commodity_index,i]+pl[commodity_index,i]
-	
+		if hold:
+			price_end=data[-1][1].loc['closeprice']
+		for i in range(1,len(data)):
+			prices.append(data[i][1].loc['closeprice'])
+		prices.append(price_end)
+		price_diff=np.diff(prices)
+		
+		trading_days=[]
+		for i in range(len(data)):
+			trading_days.append(data[i][1].loc['tradingday'])
+		trading_days.append(date2)
+		
+		# print trading_days
+		date_index=[]
+		for day in trading_days:
+			day_date=datetime(year=int(day[0:4]),month=int(day[4:6]),day=int(day[6:8]))
+			date_index.append((day_date-start_date).days)
+		date_index=[x+1 for x in date_index]
+		
+		# set up pl matrix
+		for i in range(len(price_diff)):
+			pl[commodity_index,date_index[i]]+=price_diff[i]*amount_traded*row['mult']
+		for i in range(len(pl[commodity_index,:])):
+			value_to_date[commodity_index,i+1]=value_to_date[commodity_index,i]+pl[commodity_index,i]
+		
+		
 
-# print pl		
+# print pl	
 net_worth=value_to_date/principal
-# net_worth_sum=np.sum(net_worth,axis=0)/len(all_commodity)
+net_worth_sum=np.sum(net_worth,axis=0)/len(all_commodity)
+data_point=[(date,worth) for date,worth in zip(date_list,net_worth_sum) ]
 
 
-# data_point=[(date,worth) for date,worth in zip(date_list,net_worth_sum) ]
-# print data_point
-
-
-# x_axis=[]
-# y_axis=[]
-# for date,worth in data_point:
-	# x_axis.append(date)
-	# y_axis.append(worth)
-# plt.plot(x_axis,y_axis)
-# plt.show()
+x_axis=[]
+y_axis=[]
+for date,worth in data_point:
+	x_axis.append(date)
+	y_axis.append(worth)
+plt.plot(x_axis,y_axis)
+plt.show()
 
 	
 
