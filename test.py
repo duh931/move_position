@@ -40,7 +40,7 @@ def toString(date):
 dd = dbWrapper('192.168.10.188')
 
 principal=500000.0
-allFiles = glob.glob( "*/*c1*.csv")
+allFiles = glob.glob( "*/*jd*.csv")
 spec=pd.read_csv("contract.csv")
 # print spec.columns
 if 'out.csv' in allFiles:
@@ -119,7 +119,9 @@ for commodity in list(all_commodity):
 
 indices=all_trades.index.tolist()
 N=len(indices)
+settle_date={'15':'0101','59':'0501','91':'0901'}
 amount=np.zeros(N)
+latest_settle=np.zeros(N)
 
 #calculate trading amount 
 for i in range(N):
@@ -134,9 +136,20 @@ for i in range(N):
 				opposite_leg=j
 				break
 		amount[opposite_leg]=trade_amount
-
+	if latest_settle[i]==0:
+		first_digit=(all_trades.index[i][0])[3]
+		second_digit=(all_trades.index[i][0])[8]
+		temp=settle_date[str(first_digit+second_digit)]
+		latest_settle[i]=temp
+		for j in range(i+1, N):
+			if indices[j][1]==trade_id:
+				opposite_leg=j
+				break
+		latest_settle[opposite_leg]=temp
+		
 all_trades['amount']=amount
 all_trades['mult']=multiplier
+all_trades['settle']=latest_settle
 all_trades=all_trades.sort_values(by='Date1')
 all_trades.to_csv('out.csv',index=True)
 
@@ -185,8 +198,8 @@ for commodity in all_commodity:
 
 	
 	
-value_to_date=np.zeros([len(all_commodity),duration+3])
-pl=np.zeros([len(all_commodity),duration+2])
+value_to_date=np.zeros([len(all_commodity),duration+2])
+pl=np.zeros([len(all_commodity),duration+1])
 
 value_to_date[:,0]=principal
 
@@ -205,7 +218,7 @@ for index, row in all_trades.iterrows():
 	if (date1==date2) and (row['Time1']==row['Time2']):
 		name_for_search=commodity_name[:-4]+commodity_name[-2:]
 		expire_date=expiration[name_for_search]
-		expire_date=datetime(year=row['Date2'].year,month=int(expire_date[:2]),day=int(expire_date[2:4]))-timedelta(days=1)
+		expire_date=datetime(year=row['Date2'].year,month=int(row['settle']/100.0),day=1)
 		if int(toString(expire_date))>int(toString(end_date)):
 			expire_date=end_date
 		date2=toString(expire_date)
@@ -214,7 +227,7 @@ for index, row in all_trades.iterrows():
 	data=[(ind, rows) for (ind, rows) in all_prices[commodity_name].iterrows() if ((rows['tradingday']>=date1) and (rows['tradingday']<date2) ) ]
 	if len(data)>0:
 		# print data[0][1].loc['tradingday']
-		prices=[data[0][1].loc['closeprice'],price0]
+		prices=[price0,data[0][1].loc['closeprice']]
 
 		if hold:
 			price_end=data[-1][1].loc['closeprice']
@@ -233,7 +246,7 @@ for index, row in all_trades.iterrows():
 		for day in trading_days:
 			day_date=datetime(year=int(day[0:4]),month=int(day[4:6]),day=int(day[6:8]))
 			date_index.append((day_date-start_date).days)
-		date_index=[x+1 for x in date_index]
+		# date_index=[x+1 for x in date_index]
 		
 		# set up pl matrix
 		for i in range(len(price_diff)):
@@ -247,6 +260,10 @@ for index, row in all_trades.iterrows():
 net_worth=value_to_date/principal
 net_worth_sum=np.sum(net_worth,axis=0)/len(all_commodity)
 data_point=[(date,worth) for date,worth in zip(date_list,net_worth_sum) ]
+pl_df={"date": date_list, "pl":np.sum(pl,axis=0)}
+df = pd.DataFrame(data=pl_df)
+print df.shape
+df.to_csv('pl.csv')
 
 
 x_axis=[]
