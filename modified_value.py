@@ -42,11 +42,11 @@ def toString(date):
 dd = dbWrapper('192.168.10.188')
 
 time_scale="1 Hour"
-time='1705_1709'
-name='*'
+time_period='*'
+name='spZC_'
 
 principal=500000.0
-allFiles = glob.glob( time+"/*"+name+"*.csv")
+allFiles = glob.glob( time_period+"/*"+name+"*.csv")
 spec=pd.read_csv("contract.csv")
 # print spec.columns
 if 'out.csv' in allFiles:
@@ -215,11 +215,12 @@ for commodity in all_commodity:
 # Here are the main matrices we're interested in. Value to date gives daily value of according to the pl matrix. Each line represents different
 # contract. Contracts of same commodity with different expiration date are considered as seperate contracts. 
 value_to_date=np.zeros([len(all_commodity),duration])
-pl=np.zeros([len(all_commodity),duration-1])
+pl=np.zeros([len(all_commodity),duration])
 price_diff=np.zeros([len(all_commodity),duration-1])
 amount_to_date=np.zeros([len(all_commodity),duration])
 price_to_date=np.zeros([len(all_commodity),duration])
 net_worth_to_date=np.zeros([len(all_commodity),duration])
+if_trading=np.zeros([len(all_commodity),duration])
 # holding=np.zeros([len(all_commodity),duration-1])
 
 
@@ -247,8 +248,8 @@ for index, row in all_trades.iterrows():
 		if int(toString(expire_date))>int(toString(end_date)):
 			expire_date=end_date
 		time2=expire_date
-	time1_index=(time1-start_date).seconds/3600+(time1-start_date).days*24
-	time2_index=(time2-start_date).seconds/3600+(time2-start_date).days*24
+	time1_index=int((time1-start_date).seconds/3600.0+(time1-start_date).days*24.0)
+	time2_index=int((time2-start_date).seconds/3600.0+(time2-start_date).days*24.0)
 	amount_to_date[commodity_index,time1_index]+=amount_traded
 	amount_to_date[commodity_index,(time1_index+1):(time2_index+1)]+=amount_traded
 	# holding[commodity_index,(time1_index-1):time2_index]=1
@@ -258,28 +259,44 @@ for commodity in all_commodity:
 	price_data=all_prices[commodity]
 	for index, row in price_data.iterrows():
 		time=datetime(year=int(row['tradingday'][0:4]),month=int(row['tradingday'][4:6]),day=int(row['tradingday'][6:8]),hour=int(row['bartime'][0:2]),minute=0)
-		time_index=(time-start_date).seconds/3600+(time-start_date).days*24
+		time_index=int((time-start_date).seconds/3600.0+(time-start_date).days*24.0)
 		price_to_date[commodity_index,time_index]=row['closeprice']
-for vector in price_to_date:
-	for i in range(duration):
-		if vector[i]==0:
-			vector[i]=vector[i-1]
-		
-
-		
-price_diff=np.diff(price_to_date,axis=1)		
-
-
-
-for i in range(len(price_diff[:,0])):
-	for j in range(len(price_diff[0,:])):
-		pl[i,j]=price_diff[i,j]*amount_to_date[i,j+1]
+		if_trading[commodity_index,time_index]=1
+# for vector in price_to_date:
+	# for i in range(duration):
+		# if vector[i]==0:
+			# vector[i]=vector[i-1]
+# for vector in price_to_date:
+	# for i in range(duration):
+		# if vector[i]==0:
+			# for j in range(i,duration):
+				# if vector[j]!=0:
+					# vector[i:j]=vector[j]
+					# break
+price_diff=np.zeros([len(all_commodity),duration-1])
+for i in range(len(all_commodity)):
+	j=0
+	while j<duration:
+		if price_to_date[i,j]!=0:
+			k=j+1
+			while k<duration:
+				if price_to_date[i,k]!=0:
+					pl[i,k]=(price_to_date[i,k]-price_to_date[i,j])*amount_to_date[i,k]
+					break
+				else:
+					k+=1
+			j+=1
+		else:
+			j+=1
 
 net_worth_to_date[:,0]=principal
 		
 for i in range(len(all_commodity)):
 	for j in range(1,duration):
-		net_worth_to_date[i,j]=net_worth_to_date[i,j-1]+pl[i,j-1]
+		net_worth_to_date[i,j]=net_worth_to_date[i,j-1]+pl[i,j]
+
+net_worth_to_date/=principal
+		
 
 # print price_to_date[0,100:150]
 # for vector in net_worth_to_date:
@@ -331,24 +348,25 @@ for i in range(len(all_commodity)):
 
 
 
-price_delta=[]
-for i in range(len(all_commodity)):
-	if i % 2==1:
-		price_delta.append(price_to_date[i-1]-price_to_date[i])
-		
+# price_delta=[]
+# net_worth_sum=[]
+# for i in range(1,len(all_commodity)):
+	# price_delta.append(price_to_date[i-1]-price_to_date[i])
+	# net_worth_sum.append((net_worth_to_date[i]+net_worth_to_date[i-1])/2/principal)
 # price_delta=np.diff(price_to_date,axis=0)
 # net_worth=net_worth_to_date/principal
 # net_worth_sum=np.sum(net_worth,axis=0)/len(all_commodity)
 
-
+net_worth_sum=np.sum(net_worth_to_date,axis=0)/len(all_commodity)
 
 
 price_df={"date": date_list }
 df = pd.DataFrame(data=price_df)
-for i in range(len(all_contract)):
-	df[all_contract[i]]=price_delta[i]
-
-df.to_csv('price_diff'+time+'.csv')
+# for i in range(len(all_commodity)):
+	# df[all_commodity[i]]=net_worth_to_date[i]
+	# df[all_commodity[i]+'_price']=price_to_date[i]
+df['net_worth']=net_worth_sum
+df.to_csv(name+'.csv')
 
 # print pl
 # print len(date_list) , duration
@@ -359,14 +377,12 @@ df.to_csv('price_diff'+time+'.csv')
 
 
 # n_plot=4
-# fig=plt.figure()
-
-# for i in range(n_plot):
-	# price_plot=fig.add_subplot(n_plot,1,i+1)
-	# price_plot.plot(date_list,price_delta[i])
+fig=plt.figure()
+net_worth_plot=fig.add_subplot(111)
+net_worth_plot.plot(date_list,net_worth_sum)
 
 
-# plt.show()
+plt.show()
 	
 
 
