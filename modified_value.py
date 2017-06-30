@@ -43,7 +43,7 @@ dd = dbWrapper('192.168.10.188')
 
 time_scale="1 Hour"
 time_period='*'
-name='spZC_'
+name='spc_'
 
 principal=500000.0
 allFiles = glob.glob( time_period+"/*"+name+"*.csv")
@@ -165,6 +165,10 @@ all_trades['settle']=latest_settle
 all_trades=all_trades.sort_values(by=['Date1','Time1'])
 all_trades.to_csv('out.csv',index=True)
 
+for index, row in all_trades.iterrows():
+	if row['Date1']<datetime(2015,5,15) and index[0][12:14]=='MA': 
+		row['mult']=50
+
 
 
 
@@ -192,11 +196,25 @@ all_prices={}
 
 
 for commodity in all_commodity:
+	if commodity[0:2]=='MA' and start_date<=datetime(2015,5,15):
+		date1=toString(start_date)
+		date2=toString(end_date)
+		if int(commodity[2:])<509:
+			price_night1=dd.getNightBars('ME'+commodity[2:],date1,date2,time_scale)
+			price_day1=dd.getBars('ME'+commodity[2:],date1,date2,time_scale)
+		else:
+			price_night1=dd.getNightBars(commodity,date1,date2,time_scale)
+			price_day1=dd.getBars(commodity,date1,date2,time_scale)
+		if not price_day1.empty:
+			price_day1=price_day1.iloc[:,[0,1,5]]
+		if not price_night1.empty:
+			price_night1=price_night1.iloc[:,[0,1,5]]
+		prices=pd.concat([price_night1,price_day1]).sort_values(by=['tradingday','bartime'],ascending=[True,True])
+	else:
 		date1=toString(start_date)
 		date2=toString(end_date)
 		price_night=dd.getNightBars(commodity,date1,date2,time_scale)
 		price_day=dd.getBars(commodity,date1,date2,time_scale)
-
 		if not price_day.empty:
 			price_day=price_day.iloc[:,[0,1,5]]
 		if not price_night.empty:
@@ -204,8 +222,8 @@ for commodity in all_commodity:
 		# print price_day
 		# print price_night
 		prices=pd.concat([price_night,price_day]).sort_values(by=['tradingday','bartime'],ascending=[True,True])
-		all_prices[commodity]=prices
-
+	all_prices[commodity]=prices
+	
 
 
 
@@ -221,7 +239,7 @@ amount_to_date=np.zeros([len(all_commodity),duration])
 price_to_date=np.zeros([len(all_commodity),duration])
 net_worth_to_date=np.zeros([len(all_commodity),duration])
 if_trading=np.zeros([len(all_commodity),duration])
-# holding=np.zeros([len(all_commodity),duration-1])
+
 
 
 
@@ -262,17 +280,7 @@ for commodity in all_commodity:
 		time_index=int((time-start_date).seconds/3600.0+(time-start_date).days*24.0)
 		price_to_date[commodity_index,time_index]=row['closeprice']
 		if_trading[commodity_index,time_index]=1
-# for vector in price_to_date:
-	# for i in range(duration):
-		# if vector[i]==0:
-			# vector[i]=vector[i-1]
-# for vector in price_to_date:
-	# for i in range(duration):
-		# if vector[i]==0:
-			# for j in range(i,duration):
-				# if vector[j]!=0:
-					# vector[i:j]=vector[j]
-					# break
+
 price_diff=np.zeros([len(all_commodity),duration-1])
 for i in range(len(all_commodity)):
 	j=0
@@ -298,85 +306,18 @@ for i in range(len(all_commodity)):
 net_worth_to_date/=principal
 		
 
-# print price_to_date[0,100:150]
-# for vector in net_worth_to_date:
-	# for i in range(duration):
-		# if vector[i]==0:
-			# vector[i]=vector[i-1]
-
-		
-	# date1=toString(row['Date1'])
-	# date2=toString(row['Date2'])
-	# price0=row['Price1']
-	# price_end=row['Price2']
-	# hold=0
-	# if (date1==date2) and (row['Time1']==row['Time2']):
-		# name_for_search=commodity_name[:-4]+commodity_name[-2:]
-		# expire_date=expiration[name_for_search]
-		# expire_date=datetime(year=row['Date2'].year,month=int(row['settle']/100.0),day=1)
-		# if int(toString(expire_date))>int(toString(end_date)):
-			# expire_date=end_date
-		# date2=toString(expire_date)
-		# price_end=0
-		# hold=1
-	# data=[(ind, rows) for (ind, rows) in all_prices[commodity_name].iterrows() if ((rows['tradingday']>=date1) and (rows['tradingday']<=date2 ) ) ]
-	# if len(data)>0:
-		# prices=[price0,data[0][1].loc['closeprice']]
-		# if hold:
-			# price_end=data[-1][1].loc['closeprice']
-		# for i in range(1,len(data)):
-			# prices.append(data[i][1].loc['closeprice'])
-		# price_diff=np.diff(prices)
-		
-		# trading_time=[]
-		# for i in range(len(data)):
-			# date=data[i][1].loc['tradingday']
-			# time=data[i][1].loc['bartime']
-			# trading_time.append(str(date)+str(time))
-		# trading_time.append(date2+'12:00')
-		
-		# time_index=[]
-		# for day in trading_time:
-			# day_date=datetime(year=int(day[0:4]),month=int(day[4:6]),day=int(day[6:8]),hour=int(day[8:10]),minute=int(day[11:13]))
-			# time_index.append(int((day_date-start_date).seconds/3600.0)+(day_date-start_date).days*24)
-		# for i in range(len(price_diff)):
-			# pl[commodity_index,time_index[i]]+=price_diff[i]*amount_traded*row['mult']
-		# for i in range(len(pl[commodity_index,:])):
-			# value_to_date[commodity_index,i+1]=value_to_date[commodity_index,i]+pl[commodity_index,i]
-		
-		
-
-
-
-# price_delta=[]
-# net_worth_sum=[]
-# for i in range(1,len(all_commodity)):
-	# price_delta.append(price_to_date[i-1]-price_to_date[i])
-	# net_worth_sum.append((net_worth_to_date[i]+net_worth_to_date[i-1])/2/principal)
-# price_delta=np.diff(price_to_date,axis=0)
-# net_worth=net_worth_to_date/principal
-# net_worth_sum=np.sum(net_worth,axis=0)/len(all_commodity)
 
 net_worth_sum=np.sum(net_worth_to_date,axis=0)/len(all_commodity)
 
 
 price_df={"date": date_list }
 df = pd.DataFrame(data=price_df)
-# for i in range(len(all_commodity)):
-	# df[all_commodity[i]]=net_worth_to_date[i]
-	# df[all_commodity[i]+'_price']=price_to_date[i]
+
 df['net_worth']=net_worth_sum
 df.to_csv(name+'.csv')
-
-# print pl
-# print len(date_list) , duration
-# pl_df={"date": date_list, "price_diff": }
-# df = pd.DataFrame(data=pl_df)
-# print df.shape
-# df.to_csv('temp.csv')
+print ('saved to '+name+'.csv')
 
 
-# n_plot=4
 fig=plt.figure()
 net_worth_plot=fig.add_subplot(111)
 net_worth_plot.plot(date_list,net_worth_sum)
